@@ -12,7 +12,6 @@ import java.util.concurrent.locks.ReentrantLock;
 public class Main {
     private static final String INPUT_FILENAME = "src\\main\\java\\voznytsia\\lab6\\input.txt";
     private static final String OUTPUT_FILENAME = "src\\main\\java\\voznytsia\\lab6\\output.txt";
-    private static final Lock lock = new ReentrantLock();
 
     public static void main(String[] args) {
         long startTime = System.nanoTime();
@@ -67,56 +66,48 @@ public class Main {
             String outputFilePath = new File(OUTPUT_FILENAME).getAbsolutePath();
             PrintWriter writer = new PrintWriter(outputFilePath);
 
-            double[][] result1 = new double[sizeMM][sizeMM];
-            double[][] result2 = new double[sizeME][sizeME];
-            double[] result3 = new double[sizeD];
-
-            CountDownLatch latch = new CountDownLatch(3);
             ExecutorService executor = Executors.newFixedThreadPool(3);
+
+            BlockingQueue<double[][]> queue1 = new ArrayBlockingQueue<>(1);
+            BlockingQueue<double[][]> queue2 = new ArrayBlockingQueue<>(1);
+            BlockingQueue<double[]> queue3 = new ArrayBlockingQueue<>(1);
 
             Callable<double[][]> task1 = () -> {
                 double[][] r = operations.multiplyMatrix(MM, operations.subtractMatrix(ME, MX));
-                lock.lock();
                 try {
-                    for (int i = 0; i < r.length; i++) {
-                        System.arraycopy(r[i], 0, result1[i], 0, r[i].length);
-                    }
-                    System.out.println("\nResult 1: " + Arrays.deepToString(r));
-                    writer.println("\nResult 1: " + Arrays.deepToString(result1));
-                } finally {
-                    lock.unlock();
+                    queue1.put(r);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    e.printStackTrace();
                 }
-                latch.countDown();
+                System.out.println("\nResult 1: " + Arrays.deepToString(r));
+                writer.println("\nResult 1: " + Arrays.deepToString(r));
                 return r;
             };
 
             Callable<double[][]> task2 = () -> {
                 double[][] r = operations.multiplyMatrixByScalar(operations.multiplyMatrix(ME, MX), q);
-                lock.lock();
                 try {
-                    for (int i = 0; i < r.length; i++) {
-                        System.arraycopy(r[i], 0, result2[i], 0, r[i].length);
-                    }
-                    System.out.println("\nResult 2: " + Arrays.deepToString(r));
-                    writer.println("\nResult 2: " + Arrays.deepToString(result2));
-                } finally {
-                    lock.unlock();
+                    queue2.put(r);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    e.printStackTrace();
                 }
-                latch.countDown();
+                System.out.println("\nResult 2: " + Arrays.deepToString(r));
+                writer.println("\nResult 2: " + Arrays.deepToString(r));
                 return r;
             };
 
             Callable<double[]> task3 = () -> {
                 double[] r = operations.multiplyVectorByScalar(D, operations.findMinValue(B));
-                lock.lock();
                 try {
-                    System.arraycopy(r, 0, result3, 0, r.length);
-                    System.out.println("\nResult 3: " + Arrays.toString(r));
-                    writer.println("\nResult 3: " + Arrays.toString(result3));
-                } finally {
-                    lock.unlock();
+                    queue3.put(r);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    e.printStackTrace();
                 }
-                latch.countDown();
+                System.out.println("\nResult 3: " + Arrays.toString(r));
+                writer.println("\nResult 3: " + Arrays.toString(r));
                 return r;
             };
 
@@ -125,12 +116,18 @@ public class Main {
             Future<double[]> future3 = executor.submit(task3);
 
             try {
-                latch.await();
-            } catch (InterruptedException e) {
+                future1.get();
+                future2.get();
+                future3.get();
+            } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             } finally {
                 executor.shutdown();
             }
+
+            double[][] result1 = queue1.take();
+            double[][] result2 = queue2.take();
+            double[] result3 = queue3.take();
 
             double[][] MA = new double[result1.length][result1[0].length];
             for (int i = 0; i < MA.length; i++) {
@@ -165,6 +162,8 @@ public class Main {
 //            }
         } catch (FileNotFoundException e) {
             e.printStackTrace();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 
